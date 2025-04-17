@@ -2,10 +2,9 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"io"
+	"net"
 	"os"
-	"bufio"
 )
 
 func main() {
@@ -28,7 +27,9 @@ func main() {
 	defer conn.Close()
 
 	for {
-		message, err := bufio.NewReader(conn).ReadString('\n')
+		resp := NewResp(conn)
+
+		message, err := resp.Read()
 
 		if err != nil {
 			if err == io.EOF {
@@ -38,6 +39,9 @@ func main() {
 			os.Exit(1)
 		}
 
-		conn.Write([]byte("+PONG\r\n"))
+		_ = message
+
+		writer := NewWriter(conn)
+		writer.Write(Value{typ: "string", str: "OK"})
 	}
 }
