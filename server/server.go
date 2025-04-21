@@ -19,6 +19,32 @@ func main() {
 		return
 	}
 
+	// Create or open aof file for AOS protocol
+	aof, err := NewAof("database.aof")
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	defer aof.Close()
+
+	// Read all write commands from file
+	aof.Read(func(value Value) {
+		command := strings.ToUpper(value.array[0].bulk)
+		args := value.array[1:]
+
+		handler, ok := Handlers[command]
+
+		if !ok {
+			fmt.Println("Invalid Command: ", command)
+			return
+		}
+
+		handler(args)
+	})
+
+	// Listen for connections
 	conn, err := server.Accept()
 
 	if err != nil {
@@ -68,6 +94,11 @@ func main() {
 			fmt.Println("Invalid Command: ", command)
 			writer.Write(Value{typ: "string", str: ""})
 			continue
+		}
+
+		// Write to aof file if command is a write
+		if command == "HSET" || command == "SET" {
+			aof.Write(value)
 		}
 
 		// Responding to client
