@@ -9,10 +9,18 @@ import (
 )
 
 func main() {
-	fmt.Println("Listening on port :6379")
+	defaultPort := ":6379"
+	var port string
+
+	if len(os.Args) == 1 {
+		port = defaultPort
+	} else {
+		port = ":" + string(os.Args[1])
+	}
 
 	// Establish port connection
-	server, err := net.Listen("tcp", ":6379")
+	server, err := net.Listen("tcp", port)
+	fmt.Println("Listening on port ", port)
 
 	if err != nil {
 		fmt.Println(err)

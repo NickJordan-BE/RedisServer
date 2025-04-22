@@ -29,6 +29,7 @@ type Value struct {
 	num   int
 	bulk  string
 	array []Value
+	err   error
 }
 
 // Reader for reading RESP
