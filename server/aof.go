@@ -1,5 +1,3 @@
-//add aof implementation into main create aof file defer its close, then if write operation write to aof file via writer
-
 package main
 
 import (
