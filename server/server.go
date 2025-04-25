@@ -15,7 +15,7 @@ func main() {
 	if len(os.Args) == 1 {
 		port = defaultPort
 	} else {
-		port = ":" + string(os.Args[1])
+		port = ":" + os.Args[1]
 	}
 
 	// Establish port connection
@@ -52,14 +52,22 @@ func main() {
 		handler(args)
 	})
 
-	// Listen for connections
-	conn, err := server.Accept()
+	for {
+		// Listen for connections
+		conn, err := server.Accept()
 
-	if err != nil {
-		fmt.Println(err)
-		return
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		go handleClient(conn, aof)
 	}
 
+}
+
+// Go routine that handles multiple client connections to the server
+func handleClient(conn net.Conn, aof *Aof) {
 	// Close on end of connection
 	defer conn.Close()
 
@@ -100,7 +108,7 @@ func main() {
 
 		if !ok {
 			fmt.Println("Invalid Command: ", command)
-			writer.Write(Value{typ: "string", str: ""})
+			writer.Write(Value{typ: "string", str: "ERR Unknown Command"})
 			continue
 		}
 

@@ -8,11 +8,21 @@ import (
 	"time"
 )
 
+type Redis struct {
+	role     string
+	masterIP string
+}
+
 var SETs = map[string]string{}
 var SETsMu = sync.RWMutex{}
 
 var HSETs = map[string]map[string]string{}
 var HSETsMu = sync.RWMutex{}
+
+var redis = &Redis{
+	role:     "master",
+	masterIP: "",
+}
 
 // Ping Command
 func ping(args []Value) Value {
@@ -116,7 +126,7 @@ func hGet(args []Value) Value {
 		return Value{typ: "null"}
 	}
 
-	return Value{typ: "bulk", bulk: value}
+	return Value{typ: "map", bulk: value}
 }
 
 // HGETALL Command
@@ -203,6 +213,10 @@ func keys(args []Value) Value {
 	return Value{typ: "array", array: valueList}
 }
 
+func info(args []Value) Value {
+	return Value{typ: "bulk", bulk: "role:" + redis.role}
+}
+
 // handles function calls for commands
 var Handlers = map[string]func([]Value) Value{
 	"PING":    ping,
@@ -214,4 +228,5 @@ var Handlers = map[string]func([]Value) Value{
 	"HGETALL": hGetAll,
 	"CONFIG":  config,
 	"KEYS":    keys,
+	"INFO":    info,
 }
