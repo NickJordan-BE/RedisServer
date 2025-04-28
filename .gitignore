@@ -1,0 +1,2 @@
+*.database.aof
+/server/database.aof

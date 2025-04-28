@@ -13,7 +13,7 @@ type Redis struct {
 	masterIP string
 }
 
-var SETs = map[string]string{}
+var SETs = map[string][2]string{}
 var SETsMu = sync.RWMutex{}
 
 var HSETs = map[string]map[string]string{}
@@ -38,6 +38,71 @@ func echo(args []Value) Value {
 	return Value{typ: "string", str: args[0].bulk}
 }
 
+// Time to live command
+func TTL(args []Value) Value {
+	if len(args) != 1 {
+		return Value{typ: "string", str: "ERR: Wrong number of arguments for TTL command"}
+	}
+
+	v := Value{typ: "integer"}
+	now := time.Now().Unix()
+	value, ok := SETs[args[0].bulk]
+
+	SETsMu.Lock()
+	if ok {
+		timestamp, err := strconv.Atoi(value[1])
+		num := int64(timestamp) - now
+		if err != nil {
+			return Value{typ: "error", err: err}
+		}
+
+		v.num = int(num)
+	} else {
+		return Value{typ: "null"}
+	}
+	SETsMu.Unlock()
+
+	return v
+}
+
+// Checks if key exists returning boolean
+func exists(args []Value) Value {
+	if len(args) != 1 {
+		return Value{typ: "error", str: "ERR: Wrong number of arguments for exists command"}
+	}
+
+	v := Value{}
+	v.typ = "integer"
+	v.num = 0
+	SETsMu.Lock()
+	if _, ok := SETs[args[0].bulk]; ok {
+		v.num = 1
+	}
+	SETsMu.Unlock()
+
+	return v
+}
+
+// Safe deletes from map and returns number deleted
+func del(args []Value) Value {
+	if len(args) == 0 {
+		return Value{typ: "error", str: "ERR: Wrong number of arguments for del command"}
+	}
+
+	numDel := 0
+
+	SETsMu.Lock()
+	for i := 0; i < len(args); i++ {
+		if _, ok := SETs[args[i].bulk]; ok {
+			delete(SETs, args[i].bulk)
+			numDel += 1
+		}
+	}
+	SETsMu.Unlock()
+
+	return Value{typ: "integer", num: numDel}
+}
+
 // Set command
 func set(args []Value) Value {
 	if len(args) != 2 && len(args) != 4 {
@@ -46,23 +111,27 @@ func set(args []Value) Value {
 
 	key := args[0].bulk
 	value := args[1].bulk
-
-	// Locking because of concurrent connections
-	SETsMu.Lock()
-	SETs[key] = value
-	SETsMu.Unlock()
+	var expireTime int64
 
 	// Checks for expiration argmuments
 	if len(args) == 4 && strings.ToUpper(args[2].bulk) == "PX" {
 		if exp, err := strconv.Atoi(args[3].bulk); err == nil {
 			// Concurrent function sleeps for given milliseconds
 			// Then removes key from cache
+			expireTime = time.Now().Add(time.Duration(exp) * time.Second).Unix()
 			go func(key string, duration int) {
-				time.Sleep(time.Duration(duration) * time.Millisecond)
+				time.Sleep(time.Duration(duration) * time.Second)
+				SETsMu.Lock()
 				delete(SETs, key)
+				SETsMu.Unlock()
 			}(key, exp)
 		}
+
 	}
+	// Locking because of concurrent connections
+	SETsMu.Lock()
+	SETs[key] = [2]string{value, strconv.Itoa(int(expireTime))}
+	SETsMu.Unlock()
 
 	return Value{typ: "string", str: "OK"}
 }
@@ -84,7 +153,7 @@ func get(args []Value) Value {
 		return Value{typ: "null"}
 	}
 
-	return Value{typ: "bulk", bulk: value}
+	return Value{typ: "bulk", bulk: value[0]}
 }
 
 // HSET command
@@ -126,7 +195,7 @@ func hGet(args []Value) Value {
 		return Value{typ: "null"}
 	}
 
-	return Value{typ: "map", bulk: value}
+	return Value{typ: "bulk", bulk: value}
 }
 
 // HGETALL Command
@@ -229,4 +298,7 @@ var Handlers = map[string]func([]Value) Value{
 	"CONFIG":  config,
 	"KEYS":    keys,
 	"INFO":    info,
+	"DEL":     del,
+	"EXISTS":  exists,
+	"TTL":     TTL,
 }
