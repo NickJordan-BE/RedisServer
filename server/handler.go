@@ -35,7 +35,118 @@ func ping(args []Value) Value {
 
 // Echo Command
 func echo(args []Value) Value {
-	return Value{typ: "string", str: args[0].bulk}
+	v := Value{}
+	v.typ = "string"
+	var str string = ""
+
+	for i := range args {
+		str += args[i].bulk + " "
+	}
+
+	v.str = str
+
+	return v
+}
+
+// Multiple sets at once for batch writes
+func mSet(args []Value) Value {
+	if len(args)%2 != 0 {
+		return Value{typ: "string", str: "ERR: Mset requires an even nummber of arguments."}
+	}
+	count := 0
+
+	SETsMu.Lock()
+	for i := range args {
+		list := make([]Value, 0)
+		list = append(list, args[i])
+		if _, ok := SETs[args[i].bulk]; !ok {
+			count += 1
+		}
+		set(list)
+	}
+
+	return Value{typ: "integer", num: count}
+}
+
+// Multiple gets at once for batch reading
+func mGet(args []Value) Value {
+	if len(args) == 0 {
+		return Value{typ: "string", str: "ERR: Mget command needs at least one key"}
+	}
+	v := Value{}
+	v.typ = "array"
+	v.array = make([]Value, 0)
+
+	for i := range args {
+		list := make([]Value, 0)
+		list = append(list, args[i])
+
+		v.array = append(v.array, get(list))
+	}
+
+	return v
+}
+
+// Incr command
+func incr(args []Value) Value {
+	if len(args) != 1 {
+		return Value{typ: "string", str: "ERR: Incorrect number of arguments for incr command"}
+	}
+
+	key := args[0].bulk
+
+	SETsMu.RLock()
+	value, ok := SETs[key]
+	SETsMu.RUnlock()
+
+	if !ok {
+		return Value{typ: "string", str: "Key Does not exist"}
+	}
+
+	num, err := strconv.Atoi(value[0])
+
+	if err != nil {
+		return Value{typ: "error", err: err}
+	}
+
+	num += 1
+
+	SETsMu.Lock()
+	SETs[key] = [2]string{strconv.Itoa(num), value[1]}
+	SETsMu.Unlock()
+
+	return Value{typ: "integer", num: num}
+}
+
+// Decr command
+func decr(args []Value) Value {
+	if len(args) != 1 {
+		return Value{typ: "string", str: "ERR: Incorrect number of arguments for decr command"}
+	}
+
+	key := args[0].bulk
+
+	SETsMu.RLock()
+	value, ok := SETs[key]
+	SETsMu.RUnlock()
+
+	if !ok {
+		return Value{typ: "string", str: "Key Does not exist"}
+	}
+
+	num, err := strconv.Atoi(value[0])
+
+	if err != nil {
+		return Value{typ: "error", err: err}
+	}
+
+	num -= 1
+
+	SETsMu.Lock()
+	SETs[key] = [2]string{strconv.Itoa(num), value[1]}
+	SETsMu.Unlock()
+
+	return Value{typ: "integer", num: num}
 }
 
 // Time to live command
@@ -48,7 +159,7 @@ func TTL(args []Value) Value {
 	now := time.Now().Unix()
 	value, ok := SETs[args[0].bulk]
 
-	SETsMu.Lock()
+	SETsMu.RLock()
 	if ok {
 		timestamp, err := strconv.Atoi(value[1])
 		num := int64(timestamp) - now
@@ -60,7 +171,7 @@ func TTL(args []Value) Value {
 	} else {
 		return Value{typ: "null"}
 	}
-	SETsMu.Unlock()
+	SETsMu.RUnlock()
 
 	return v
 }
@@ -74,11 +185,11 @@ func exists(args []Value) Value {
 	v := Value{}
 	v.typ = "integer"
 	v.num = 0
-	SETsMu.Lock()
+	SETsMu.RLock()
 	if _, ok := SETs[args[0].bulk]; ok {
 		v.num = 1
 	}
-	SETsMu.Unlock()
+	SETsMu.RUnlock()
 
 	return v
 }
@@ -301,4 +412,8 @@ var Handlers = map[string]func([]Value) Value{
 	"DEL":     del,
 	"EXISTS":  exists,
 	"TTL":     TTL,
+	"INCR":    incr,
+	"DECR":    decr,
+	"MGET":    mGet,
+	"MSET":    mSet,
 }

@@ -1,2 +1,2 @@
 *.database.aof
-/server/database.aof
+server/database.aof
