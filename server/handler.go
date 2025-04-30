@@ -8,21 +8,11 @@ import (
 	"time"
 )
 
-type Redis struct {
-	role     string
-	masterIP string
-}
-
 var SETs = map[string][2]string{}
 var SETsMu = sync.RWMutex{}
 
 var HSETs = map[string]map[string]string{}
 var HSETsMu = sync.RWMutex{}
-
-var redis = &Redis{
-	role:     "master",
-	masterIP: "",
-}
 
 // Ping Command
 func ping(args []Value) Value {
@@ -374,6 +364,7 @@ func keys(args []Value) Value {
 		return Value{typ: "string", str: "ERR: Wrong number of arguments for the keys command"}
 	}
 
+	// Creates pattern checker
 	pattern := args[0].bulk
 	regexPattern := globToRegex(pattern)
 	re, err := regexp.Compile(regexPattern)
@@ -384,6 +375,7 @@ func keys(args []Value) Value {
 
 	valueList := make([]Value, 0)
 
+	// Checks patterns
 	for key, _ := range SETs {
 		if re.MatchString(key) {
 			valueList = append(valueList, Value{typ: "bulk", bulk: key})
@@ -394,26 +386,55 @@ func keys(args []Value) Value {
 }
 
 func info(args []Value) Value {
-	return Value{typ: "bulk", bulk: "role:" + redis.role}
+	// Return replication info only
+	v := Value{}
+
+	if len(args) == 1 && args[0].bulk == "replication" {
+		v.typ = "array"
+		v.array = make([]Value, 0)
+		v.array = append(v.array, Value{typ: "bulk",
+			bulk: "master_replid:" +
+				RedisInstance.master_replid})
+		v.array = append(v.array, Value{typ: "bulk",
+			bulk: "master_repl_offset:" +
+				string(RedisInstance.master_repl_offset)})
+	} else {
+		v.typ = "bulk"
+		v.bulk = "role:" + RedisInstance.role
+	}
+
+	return v
+}
+
+// Used for initiating handshake between replica and master
+func replconf(args []Value) Value {
+	return Value{typ: "string", str: "OK"}
+}
+
+// Used for initiating handshake between replica and master
+func psync(args []Value) Value {
+	return Value{typ: "string", str: "FULLRESYNC " + RedisInstance.master_replid + " " + string(RedisInstance.master_repl_offset)}
 }
 
 // handles function calls for commands
 var Handlers = map[string]func([]Value) Value{
-	"PING":    ping,
-	"ECHO":    echo,
-	"SET":     set,
-	"GET":     get,
-	"HSET":    hSet,
-	"HGET":    hGet,
-	"HGETALL": hGetAll,
-	"CONFIG":  config,
-	"KEYS":    keys,
-	"INFO":    info,
-	"DEL":     del,
-	"EXISTS":  exists,
-	"TTL":     TTL,
-	"INCR":    incr,
-	"DECR":    decr,
-	"MGET":    mGet,
-	"MSET":    mSet,
+	"PING":     ping,
+	"ECHO":     echo,
+	"SET":      set,
+	"GET":      get,
+	"HSET":     hSet,
+	"HGET":     hGet,
+	"HGETALL":  hGetAll,
+	"CONFIG":   config,
+	"KEYS":     keys,
+	"INFO":     info,
+	"DEL":      del,
+	"EXISTS":   exists,
+	"TTL":      TTL,
+	"INCR":     incr,
+	"DECR":     decr,
+	"MGET":     mGet,
+	"MSET":     mSet,
+	"REPLCONF": replconf,
+	"PSYNC":    psync,
 }

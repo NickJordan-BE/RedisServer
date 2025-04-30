@@ -6,7 +6,28 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 )
+
+type Redis struct {
+	role               string
+	master_replid      string
+	master_repl_offset byte
+	masterIP           string
+	is_rep             int
+	master_host        string
+	master_port        string
+}
+
+var RedisInstance = &Redis{
+	role:               "master",
+	master_replid:      "",
+	master_repl_offset: 0,
+	masterIP:           "",
+	is_rep:             0,
+	master_host:        "",
+	master_port:        "",
+}
 
 func main() {
 	defaultPort := ":6379"
@@ -15,7 +36,23 @@ func main() {
 	if len(os.Args) == 1 {
 		port = defaultPort
 	} else {
-		port = ":" + os.Args[1]
+		port = ":" + os.Args[2]
+	}
+
+	if len(os.Args) > 3 && os.Args[3] == "--replicaof" {
+		masterInfo := os.Args[4]
+
+		RedisInstance.role = "slave"
+		RedisInstance.is_rep = 1
+		spaceIndex := strings.Index(masterInfo, " ")
+
+		RedisInstance.master_host = masterInfo[:spaceIndex]
+		RedisInstance.master_port = ":" + masterInfo[spaceIndex:]
+
+		// GoRoutine to initiate replication handshake
+		initiateHandshake(RedisInstance)
+	} else {
+		RedisInstance.master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 	}
 
 	// Establish port connection
@@ -83,7 +120,8 @@ func handleClient(conn net.Conn, aof *Aof) {
 				break
 			}
 			fmt.Println("Error reading from client: ", err.Error())
-			os.Exit(1)
+			fmt.Printf("Error reading from client %s: %s\n", conn.RemoteAddr(), err.Error())
+			return
 		}
 
 		if value.typ != "array" {
@@ -120,5 +158,35 @@ func handleClient(conn net.Conn, aof *Aof) {
 		// Responding to client
 		res := handler(args)
 		writer.Write(res)
+	}
+}
+
+// Initiates handshake with master client for replication
+func initiateHandshake(RedisInstance *Redis) {
+	master, err := net.Dial("tcp", RedisInstance.master_host+RedisInstance.master_port)
+
+	if err != nil {
+		fmt.Print("Dial Error", err)
+		return
+	}
+	defer master.Close()
+
+	commands := make([][]byte, 0)
+	commands = append(commands, []byte("*1\r\n$4\r\nping\r\n"))
+	commands = append(commands, []byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n%s\r\n", RedisInstance.master_port)))
+	commands = append(commands, []byte("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"))
+	commands = append(commands, []byte("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"))
+
+	resp := NewResp(master)
+
+	for i := range commands {
+		time.Sleep(time.Second * 1)
+		master.Write(commands[i])
+		_, err := resp.Read()
+
+		if err != nil {
+			fmt.Print("Error", err)
+			return
+		}
 	}
 }
