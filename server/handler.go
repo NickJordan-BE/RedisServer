@@ -14,6 +14,10 @@ var SETsMu = sync.RWMutex{}
 var HSETs = map[string]map[string]string{}
 var HSETsMu = sync.RWMutex{}
 
+var XSETs = map[string]map[string]string{}
+var XPREV = "0-0"
+var XSETsMu = sync.RWMutex{}
+
 // Ping Command
 func ping(args []Value) Value {
 	if len(args) == 0 {
@@ -416,6 +420,58 @@ func psync(args []Value) Value {
 	return Value{typ: "string", str: "FULLRESYNC " + RedisInstance.master_replid + " " + string(RedisInstance.master_repl_offset)}
 }
 
+// Returns the type stored
+func typeC(args []Value) Value {
+	if len(args) != 1 {
+		return Value{typ: "string", str: "Err not the correct number of args for type command"}
+	}
+	val := get(args)
+	v := Value{typ: "string"}
+
+	switch val.typ {
+	case "bulk":
+		v.str = "string"
+	case "null":
+		v.str = "none"
+	case "array":
+		v.str = "hash"
+	}
+
+	return v
+}
+
+func xadd(args []Value) Value {
+	hashMap := args[0].bulk
+	id := args[1].bulk
+	index := strings.Index(XPREV, "-")
+
+	if XPREV[:index] > id[:index] {
+		return Value{typ: "string", str: "Err"}
+	} else if XPREV[index+1:] > id[index+1:] {
+		return Value{typ: "string", str: "err"}
+	}
+	XPREV = id
+
+	// Lock due to multiple connections
+	XSETsMu.Lock()
+	if _, ok := HSETs[hashMap]; !ok {
+		XSETs[hashMap] = map[string]string{}
+	}
+
+	XSETs[hashMap]["id"] = id
+
+	for i := 2; i < len(args)-2; i++ {
+		key := args[i].bulk
+		val := args[i+1].bulk
+
+		XSETs[hashMap][key] = val
+	}
+
+	XSETsMu.Unlock()
+
+	return Value{typ: "bulk", bulk: id}
+}
+
 // handles function calls for commands
 var Handlers = map[string]func([]Value) Value{
 	"PING":     ping,
@@ -437,4 +493,6 @@ var Handlers = map[string]func([]Value) Value{
 	"MSET":     mSet,
 	"REPLCONF": replconf,
 	"PSYNC":    psync,
+	"TYPE":     typeC,
+	"XADD":     xadd,
 }

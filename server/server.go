@@ -151,7 +151,7 @@ func handleClient(conn net.Conn, aof *Aof) {
 		}
 
 		// Write to aof file if command is a write
-		if command == "HSET" || command == "SET" {
+		if command == "HSET" || command == "SET" || command == "DEL" || command == "MSET" || command == "INCR" || command == "DECR" || command == "XADD" {
 			aof.Write(value)
 		}
 
