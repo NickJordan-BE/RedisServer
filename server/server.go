@@ -156,8 +156,13 @@ func handleClient(conn net.Conn, aof *Aof) {
 		}
 
 		// Responding to client
-		res := handler(args)
-		writer.Write(res)
+		if queuing && command != "EXEC" {
+			QUEUE = append(QUEUE, value.array)
+			writer.Write(Value{typ: "string", str: "QUEUED"})
+		} else {
+			res := handler(args)
+			writer.Write(res)
+		}
 	}
 }
 

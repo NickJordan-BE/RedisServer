@@ -14,9 +14,12 @@ var SETsMu = sync.RWMutex{}
 var HSETs = map[string]map[string]string{}
 var HSETsMu = sync.RWMutex{}
 
-var XSETs = map[string]map[string]string{}
+var XSETs = map[string]map[string]map[string]string{}
 var XPREV = "0-0"
 var XSETsMu = sync.RWMutex{}
+
+var QUEUE = make([][]Value, 0)
+var queuing = false
 
 // Ping Command
 func ping(args []Value) Value {
@@ -455,16 +458,18 @@ func xadd(args []Value) Value {
 	// Lock due to multiple connections
 	XSETsMu.Lock()
 	if _, ok := HSETs[hashMap]; !ok {
-		XSETs[hashMap] = map[string]string{}
+		XSETs[hashMap] = map[string]map[string]string{}
 	}
 
-	XSETs[hashMap]["id"] = id
+	if _, ok := HSETs[hashMap][id]; !ok {
+		XSETs[hashMap][id] = map[string]string{}
+	}
 
 	for i := 2; i < len(args)-2; i++ {
 		key := args[i].bulk
 		val := args[i+1].bulk
 
-		XSETs[hashMap][key] = val
+		XSETs[hashMap][id][key] = val
 	}
 
 	XSETsMu.Unlock()
@@ -472,27 +477,67 @@ func xadd(args []Value) Value {
 	return Value{typ: "bulk", bulk: id}
 }
 
+func multi(args []Value) Value {
+	if len(args) != 0 {
+		return Value{typ: "string", str: "Err"}
+	}
+	queuing = true
+	return Value{typ: "string", str: "OK"}
+}
+
+func exec(args []Value) Value {
+	if len(args) != 0 {
+		return Value{typ: "string", str: "Err"}
+	}
+	results := make([]Value, 0)
+	queuing = false
+
+	for i := range QUEUE {
+		command := strings.ToUpper(QUEUE[i][0].bulk)
+		args := QUEUE[i][1:]
+		handler, ok := Handlers[command]
+
+		if !ok {
+			results = append(results, Value{typ: "string", str: "ERR Unknown Command"})
+			continue
+		}
+
+		results = append(results, handler(args))
+	}
+
+	QUEUE = make([][]Value, 0)
+
+	return Value{typ: "array", array: results}
+}
+
+// Commmand handler variable initialized after all functions are defined
+var Handlers map[string]func([]Value) Value
+
 // handles function calls for commands
-var Handlers = map[string]func([]Value) Value{
-	"PING":     ping,
-	"ECHO":     echo,
-	"SET":      set,
-	"GET":      get,
-	"HSET":     hSet,
-	"HGET":     hGet,
-	"HGETALL":  hGetAll,
-	"CONFIG":   config,
-	"KEYS":     keys,
-	"INFO":     info,
-	"DEL":      del,
-	"EXISTS":   exists,
-	"TTL":      TTL,
-	"INCR":     incr,
-	"DECR":     decr,
-	"MGET":     mGet,
-	"MSET":     mSet,
-	"REPLCONF": replconf,
-	"PSYNC":    psync,
-	"TYPE":     typeC,
-	"XADD":     xadd,
+func init() {
+	Handlers = map[string]func([]Value) Value{
+		"PING":     ping,
+		"ECHO":     echo,
+		"SET":      set,
+		"GET":      get,
+		"HSET":     hSet,
+		"HGET":     hGet,
+		"HGETALL":  hGetAll,
+		"CONFIG":   config,
+		"KEYS":     keys,
+		"INFO":     info,
+		"DEL":      del,
+		"EXISTS":   exists,
+		"TTL":      TTL,
+		"INCR":     incr,
+		"DECR":     decr,
+		"MGET":     mGet,
+		"MSET":     mSet,
+		"REPLCONF": replconf,
+		"PSYNC":    psync,
+		"TYPE":     typeC,
+		"XADD":     xadd,
+		"MULTI":    multi,
+		"EXEC":     exec,
+	}
 }
