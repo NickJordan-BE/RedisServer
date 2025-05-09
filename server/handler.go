@@ -8,16 +8,20 @@ import (
 	"time"
 )
 
+// In memory Database DS
 var SETs = map[string][2]string{}
 var SETsMu = sync.RWMutex{}
 
+// In memory hashmap for the DB
 var HSETs = map[string]map[string]string{}
 var HSETsMu = sync.RWMutex{}
 
+// Stores streams
 var XSETs = map[string]map[string]map[string]string{}
 var XPREV = "0-0"
 var XSETsMu = sync.RWMutex{}
 
+// Stores for transactions
 var QUEUE = make([][]Value, 0)
 var queuing = false
 
@@ -392,6 +396,7 @@ func keys(args []Value) Value {
 	return Value{typ: "array", array: valueList}
 }
 
+// Returns info on redis instance
 func info(args []Value) Value {
 	// Return replication info only
 	v := Value{}
@@ -443,6 +448,7 @@ func typeC(args []Value) Value {
 	return v
 }
 
+// Adds stream entry into any identified stream
 func xadd(args []Value) Value {
 	hashMap := args[0].bulk
 	id := args[1].bulk
@@ -477,6 +483,7 @@ func xadd(args []Value) Value {
 	return Value{typ: "bulk", bulk: id}
 }
 
+// Starts transaction
 func multi(args []Value) Value {
 	if len(args) != 0 {
 		return Value{typ: "string", str: "Err"}
@@ -485,10 +492,15 @@ func multi(args []Value) Value {
 	return Value{typ: "string", str: "OK"}
 }
 
+// Executes stored transactions
 func exec(args []Value) Value {
 	if len(args) != 0 {
 		return Value{typ: "string", str: "Err"}
 	}
+	if len(QUEUE) == 0 {
+		return Value{typ: "string", str: "EXEC without Multi"}
+	}
+
 	results := make([]Value, 0)
 	queuing = false
 

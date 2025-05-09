@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// Redis structure for replication
 type Redis struct {
 	role               string
 	master_replid      string
@@ -19,6 +20,7 @@ type Redis struct {
 	master_port        string
 }
 
+// Instance made for each client
 var RedisInstance = &Redis{
 	role:               "master",
 	master_replid:      "",
@@ -39,6 +41,7 @@ func main() {
 		port = ":" + os.Args[2]
 	}
 
+	// Checks for OS args
 	if len(os.Args) > 3 && os.Args[3] == "--replicaof" {
 		masterInfo := os.Args[4]
 
@@ -155,14 +158,19 @@ func handleClient(conn net.Conn, aof *Aof) {
 			aof.Write(value)
 		}
 
-		// Responding to client
+		// Response to client
+		var res Value
+
+		// Storing transactions and listening for EXEC command
 		if queuing && command != "EXEC" {
 			QUEUE = append(QUEUE, value.array)
-			writer.Write(Value{typ: "string", str: "QUEUED"})
+			res = Value{typ: "string", str: "QUEUED"}
 		} else {
-			res := handler(args)
-			writer.Write(res)
+			res = handler(args)
 		}
+
+		// Response to client
+		writer.Write(res)
 	}
 }
 
