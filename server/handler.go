@@ -24,6 +24,7 @@ var XSETsMu = sync.RWMutex{}
 // Stores for transactions
 var QUEUE = make([][]Value, 0)
 var queuing = false
+var multiExecuted = false
 
 // Ping Command
 func ping(args []Value) Value {
@@ -489,6 +490,7 @@ func multi(args []Value) Value {
 		return Value{typ: "string", str: "Err"}
 	}
 	queuing = true
+	multiExecuted = true
 	return Value{typ: "string", str: "OK"}
 }
 
@@ -497,12 +499,12 @@ func exec(args []Value) Value {
 	if len(args) != 0 {
 		return Value{typ: "string", str: "Err"}
 	}
-	if len(QUEUE) == 0 {
-		return Value{typ: "string", str: "EXEC without Multi"}
+	if !multiExecuted {
+		return Value{typ: "string", str: "ERR: EXEC without Multi"}
 	}
-
 	results := make([]Value, 0)
 	queuing = false
+	multiExecuted = false
 
 	for i := range QUEUE {
 		command := strings.ToUpper(QUEUE[i][0].bulk)
@@ -520,6 +522,21 @@ func exec(args []Value) Value {
 	QUEUE = make([][]Value, 0)
 
 	return Value{typ: "array", array: results}
+}
+
+// Discard command for transactions
+func discard(args []Value) Value {
+	if len(args) != 0 {
+		return Value{typ: "string", str: "ERR: Wrong number of args for Discard command"}
+	}
+	if !multiExecuted {
+		return Value{typ: "string", str: "DISCARD without MULTI"}
+	}
+	multiExecuted = false
+	queuing = false
+	QUEUE = make([][]Value, 0)
+
+	return Value{typ: "string", str: "OK"}
 }
 
 // Commmand handler variable initialized after all functions are defined
@@ -551,5 +568,6 @@ func init() {
 		"XADD":     xadd,
 		"MULTI":    multi,
 		"EXEC":     exec,
+		"DISCARD":  discard,
 	}
 }

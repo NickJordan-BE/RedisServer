@@ -162,7 +162,7 @@ func handleClient(conn net.Conn, aof *Aof) {
 		var res Value
 
 		// Storing transactions and listening for EXEC command
-		if queuing && command != "EXEC" {
+		if queuing && !(command == "EXEC" || command == "DISCARD") {
 			QUEUE = append(QUEUE, value.array)
 			res = Value{typ: "string", str: "QUEUED"}
 		} else {
